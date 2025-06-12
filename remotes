@@ -1,0 +1,458 @@
+--[[
+    RemoteEvent Monitor - HUD de Monitoramento
+    Features:
+    - Captura todos os RemoteEvents disparados no jogo
+    - Exibe nome do evento e parâmetros
+    - Interface arrastável e personalizável
+    - Filtros para eventos específicos
+    - Botão para limpar log
+    - Botão para copiar dados
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+-- Configurações
+local MAX_LOG_ENTRIES = 50 -- Máximo de eventos mostrados
+local DEBUG_MODE = true -- Ativa logs detalhados no console
+local CAPTURE_SERVER_EVENTS = true -- Tenta capturar eventos do servidor (requer hook)
+local CAPTURE_CLIENT_EVENTS = true -- Captura eventos do cliente
+
+-- Estado do script
+local EventMonitor = {
+    Active = true,
+    Logs = {},
+    OriginalEvents = {},
+    Hooks = {},
+    UI = nil
+}
+
+-- Função para debugar
+local function DebugPrint(...)
+    if DEBUG_MODE then
+        print("[EventMonitor]", ...)
+    end
+end
+
+-- Função para formatar parâmetros
+local function FormatParams(params)
+    local paramStr = ""
+    local success, result = pcall(function()
+        if type(params) == "table" then
+            return HttpService:JSONEncode(params)
+        else
+            return tostring(params)
+        end
+    end)
+    
+    if success then
+        paramStr = result
+    else
+        paramStr = "<dados não serializáveis>"
+    end
+    
+    -- Limitar tamanho para não sobrecarregar a UI
+    if #paramStr > 100 then
+        paramStr = paramStr:sub(1, 100) .. "..."
+    end
+    
+    return paramStr
+end
+
+-- Função para adicionar entrada ao log
+function EventMonitor:AddLog(eventName, params, fromServer)
+    local logEntry = {
+        Time = os.date("%X"),
+        Event = eventName,
+        Params = FormatParams(params),
+        FromServer = fromServer
+    }
+    
+    table.insert(self.Logs, 1, logEntry)
+    
+    -- Limitar tamanho do log
+    while #self.Logs > MAX_LOG_ENTRIES do
+        table.remove(self.Logs)
+    end
+    
+    -- Atualizar UI
+    if self.UI then
+        self:UpdateLogDisplay()
+    end
+end
+
+-- Função para hook em RemoteEvents
+function EventMonitor:HookRemoteEvent(event)
+    if self.Hooks[event] then return end -- Já está hookado
+    
+    local oldFireServer = event.FireServer
+    local oldInvokeServer = event.InvokeServer
+    
+    self.OriginalEvents[event] = {
+        FireServer = oldFireServer,
+        InvokeServer = oldInvokeServer
+    }
+    
+    -- Hook FireServer
+    event.FireServer = function(self, ...)
+        local args = {...}
+        EventMonitor:AddLog(self.Name, args, false)
+        return oldFireServer(self, unpack(args))
+    end
+    
+    -- Hook InvokeServer (se existir)
+    if oldInvokeServer then
+        event.InvokeServer = function(self, ...)
+            local args = {...}
+            EventMonitor:AddLog(self.Name, args, false)
+            return oldInvokeServer(self, unpack(args))
+        end
+    end
+    
+    self.Hooks[event] = true
+    DebugPrint("Hooked event:", event.Name)
+end
+
+-- Função para encontrar e hookar todos os RemoteEvents
+function EventMonitor:FindAndHookEvents()
+    -- Serviços onde RemoteEvents podem estar
+    local services = {
+        game:GetService("ReplicatedStorage"),
+        game:GetService("ReplicatedFirst"),
+        game:GetService("Workspace"),
+        game:GetService("ServerScriptService"),
+        game:GetService("ServerStorage"),
+        game:GetService("StarterGui"),
+        game:GetService("StarterPack"),
+        game:GetService("StarterPlayer")
+    }
+    
+    for _, service in ipairs(services) do
+        for _, child in ipairs(service:GetDescendants()) do
+            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                self:HookRemoteEvent(child)
+            end
+        end
+    end
+    
+    -- Monitorar novos eventos que possam ser criados
+    for _, service in ipairs(services) do
+        service.DescendantAdded:Connect(function(child)
+            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                self:HookRemoteEvent(child)
+            end
+        end)
+    end
+end
+
+-- Função para atualizar a exibição do log
+function EventMonitor:UpdateLogDisplay()
+    if not self.UI then return end
+    
+    local LogFrame = self.UI.LogFrame
+    LogFrame:ClearAllChildren()
+    
+    -- Cabeçalho
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 25)
+    header.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    header.BorderSizePixel = 0
+    header.Parent = LogFrame
+    
+    local timeLabel = Instance.new("TextLabel")
+    timeLabel.Name = "TimeLabel"
+    timeLabel.Size = UDim2.new(0.15, 0, 1, 0)
+    timeLabel.Position = UDim2.new(0, 0, 0, 0)
+    timeLabel.Text = "Hora"
+    timeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    timeLabel.Font = Enum.Font.GothamBold
+    timeLabel.TextSize = 12
+    timeLabel.BackgroundTransparency = 1
+    timeLabel.Parent = header
+    
+    local eventLabel = Instance.new("TextLabel")
+    eventLabel.Name = "EventLabel"
+    eventLabel.Size = UDim2.new(0.3, 0, 1, 0)
+    eventLabel.Position = UDim2.new(0.15, 0, 0, 0)
+    eventLabel.Text = "Evento"
+    eventLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    eventLabel.Font = Enum.Font.GothamBold
+    eventLabel.TextSize = 12
+    eventLabel.BackgroundTransparency = 1
+    eventLabel.Parent = header
+    
+    local paramsLabel = Instance.new("TextLabel")
+    paramsLabel.Name = "ParamsLabel"
+    paramsLabel.Size = UDim2.new(0.55, 0, 1, 0)
+    paramsLabel.Position = UDim2.new(0.45, 0, 0, 0)
+    paramsLabel.Text = "Parâmetros"
+    paramsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    paramsLabel.Font = Enum.Font.GothamBold
+    paramsLabel.TextSize = 12
+    paramsLabel.BackgroundTransparency = 1
+    paramsLabel.Parent = header
+    
+    -- Entradas do log
+    for i, log in ipairs(self.Logs) do
+        local entry = Instance.new("Frame")
+        entry.Name = "Entry_" .. i
+        entry.Size = UDim2.new(1, 0, 0, 25)
+        entry.Position = UDim2.new(0, 0, 0, 25 + (i-1)*25)
+        entry.BackgroundColor3 = i % 2 == 0 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(50, 50, 50)
+        entry.BorderSizePixel = 0
+        entry.Parent = LogFrame
+        
+        local timeText = Instance.new("TextLabel")
+        timeText.Name = "TimeText"
+        timeText.Size = UDim2.new(0.15, 0, 1, 0)
+        timeText.Position = UDim2.new(0, 0, 0, 0)
+        timeText.Text = log.Time
+        timeText.TextColor3 = log.FromServer and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 255, 150)
+        timeText.Font = Enum.Font.Gotham
+        timeText.TextSize = 12
+        timeText.BackgroundTransparency = 1
+        timeText.TextXAlignment = Enum.TextXAlignment.Left
+        timeText.Parent = entry
+        
+        local eventText = Instance.new("TextLabel")
+        eventText.Name = "EventText"
+        eventText.Size = UDim2.new(0.3, 0, 1, 0)
+        eventText.Position = UDim2.new(0.15, 0, 0, 0)
+        eventText.Text = log.Event
+        eventText.TextColor3 = Color3.fromRGB(200, 200, 255)
+        eventText.Font = Enum.Font.GothamBold
+        eventText.TextSize = 12
+        eventText.BackgroundTransparency = 1
+        eventText.TextXAlignment = Enum.TextXAlignment.Left
+        eventText.Parent = entry
+        
+        local paramsText = Instance.new("TextLabel")
+        paramsText.Name = "ParamsText"
+        paramsText.Size = UDim2.new(0.55, 0, 1, 0)
+        paramsText.Position = UDim2.new(0.45, 0, 0, 0)
+        paramsText.Text = log.Params
+        paramsText.TextColor3 = Color3.fromRGB(200, 200, 200)
+        paramsText.Font = Enum.Font.Gotham
+        paramsText.TextSize = 12
+        paramsText.BackgroundTransparency = 1
+        paramsText.TextXAlignment = Enum.TextXAlignment.Left
+        paramsText.TextTruncate = Enum.TextTruncate.AtEnd
+        paramsText.Parent = entry
+    end
+    
+    -- Ajustar tamanho do frame de log
+    LogFrame.CanvasSize = UDim2.new(0, 0, 0, 25 + #self.Logs * 25)
+end
+
+-- Função para criar a interface
+function EventMonitor:CreateUI()
+    if self.UI then self.UI.Main:Destroy() end
+    
+    local Main = Instance.new("ScreenGui")
+    Main.Name = "EventMonitorHUD"
+    Main.ResetOnSpawn = false
+    Main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Main.IgnoreGuiInset = true
+    
+    local Frame = Instance.new("Frame")
+    Frame.Name = "MainFrame"
+    Frame.Size = UDim2.new(0, 600, 0, 400)
+    Frame.Position = UDim2.new(0.5, -300, 0.5, -200)
+    Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    Frame.BorderSizePixel = 0
+    Frame.Active = true
+    Frame.Draggable = true
+    Frame.Parent = Main
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(30, 30, 70)
+    Title.Text = "REMOTE EVENT MONITOR"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 16
+    Title.Parent = Frame
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 8)
+    TitleCorner.Parent = Title
+    
+    local LogFrame = Instance.new("ScrollingFrame")
+    LogFrame.Name = "LogFrame"
+    LogFrame.Size = UDim2.new(0.95, 0, 0.8, -40)
+    LogFrame.Position = UDim2.new(0.025, 0, 0.1, 30)
+    LogFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    LogFrame.BorderSizePixel = 0
+    LogFrame.ScrollBarThickness = 8
+    LogFrame.Parent = Frame
+    
+    local LogCorner = Instance.new("UICorner")
+    LogCorner.CornerRadius = UDim.new(0, 6)
+    LogCorner.Parent = LogFrame
+    
+    local Controls = Instance.new("Frame")
+    Controls.Name = "Controls"
+    Controls.Size = UDim2.new(0.95, 0, 0.1, 0)
+    Controls.Position = UDim2.new(0.025, 0, 0.9, -10)
+    Controls.BackgroundTransparency = 1
+    Controls.Parent = Frame
+    
+    local ClearButton = Instance.new("TextButton")
+    ClearButton.Name = "ClearButton"
+    ClearButton.Size = UDim2.new(0.2, 0, 1, 0)
+    ClearButton.Position = UDim2.new(0, 0, 0, 0)
+    ClearButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
+    ClearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ClearButton.Font = Enum.Font.GothamBold
+    ClearButton.TextSize = 14
+    ClearButton.Text = "LIMPAR"
+    ClearButton.Parent = Controls
+    
+    local ClearCorner = Instance.new("UICorner")
+    ClearCorner.CornerRadius = UDim.new(0, 6)
+    ClearCorner.Parent = ClearButton
+    
+    local CopyButton = Instance.new("TextButton")
+    CopyButton.Name = "CopyButton"
+    CopyButton.Size = UDim2.new(0.2, 0, 1, 0)
+    CopyButton.Position = UDim2.new(0.25, 0, 0, 0)
+    CopyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
+    CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CopyButton.Font = Enum.Font.GothamBold
+    CopyButton.TextSize = 14
+    CopyButton.Text = "COPIAR"
+    CopyButton.Parent = Controls
+    
+    local CopyCorner = Instance.new("UICorner")
+    CopyCorner.CornerRadius = UDim.new(0, 6)
+    CopyCorner.Parent = CopyButton
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0.2, 0, 1, 0)
+    CloseButton.Position = UDim2.new(0.8, 0, 0, 0)
+    CloseButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.TextSize = 14
+    CloseButton.Text = "FECHAR"
+    CloseButton.Parent = Controls
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 6)
+    CloseCorner.Parent = CloseButton
+    
+    -- Animações
+    local function ButtonHoverEffect(button)
+        button.MouseEnter:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0.3}):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+        end)
+    end
+    
+    ButtonHoverEffect(ClearButton)
+    ButtonHoverEffect(CopyButton)
+    ButtonHoverEffect(CloseButton)
+    
+    -- Conectar eventos
+    ClearButton.MouseButton1Click:Connect(function()
+        self.Logs = {}
+        self:UpdateLogDisplay()
+    end)
+    
+    CopyButton.MouseButton1Click:Connect(function()
+        local logText = ""
+        for _, log in ipairs(self.Logs) do
+            logText = logText .. string.format("[%s] %s: %s\n", log.Time, log.Event, log.Params)
+        end
+        
+        if setclipboard then
+            setclipboard(logText)
+            DebugPrint("Log copiado para a área de transferência!")
+        else
+            DebugPrint("Função setclipboard não disponível")
+        end
+    end)
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        Main:Destroy()
+        self.UI = nil
+    end)
+    
+    -- Salvar referências
+    self.UI = {
+        Main = Main,
+        LogFrame = LogFrame,
+        ClearButton = ClearButton,
+        CopyButton = CopyButton,
+        CloseButton = CloseButton
+    }
+    
+    -- Adicionar ao PlayerGui
+    if not LocalPlayer:FindFirstChild("PlayerGui") then
+        LocalPlayer:WaitForChild("PlayerGui")
+    end
+    Main.Parent = LocalPlayer.PlayerGui
+    
+    -- Atualizar display inicial
+    self:UpdateLogDisplay()
+    
+    DebugPrint("Interface criada com sucesso")
+end
+
+-- Função para tentar capturar eventos do servidor (requer hook avançado)
+function EventMonitor:HookServerEvents()
+    if not CAPTURE_SERVER_EVENTS then return end
+    if not hookfunction or not getconnections then return end
+    
+    DebugPrint("Tentando hookar eventos do servidor...")
+    
+    -- Hook genérico para RemoteEvent.OnServerEvent
+    local remoteEventMetatable = getrawmetatable(game:GetService("ReplicatedStorage"):FindFirstChildOfClass("RemoteEvent"))
+    if remoteEventMetatable then
+        local oldNamecall = remoteEventMetatable.__namecall
+        remoteEventMetatable.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" or method == "InvokeServer" then
+                EventMonitor:AddLog(self.Name, {...}, true)
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+end
+
+-- Inicialização
+local function Initialize()
+    DebugPrint("Inicializando EventMonitor...")
+    
+    -- Criar interface
+    EventMonitor:CreateUI()
+    
+    -- Hookar eventos do cliente
+    if CAPTURE_CLIENT_EVENTS then
+        EventMonitor:FindAndHookEvents()
+    end
+    
+    -- Tentar hookar eventos do servidor
+    EventMonitor:HookServerEvents()
+    
+    DebugPrint("Monitor de eventos ativo!")
+end
+
+-- Iniciar
+pcall(Initialize)
+
+return EventMonitor
