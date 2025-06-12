@@ -22,6 +22,17 @@ local function getCharacterAndHumanoid()
     return character, humanoid
 end
 
+-- Função para forçar o respawn e verificar a vida do personagem
+local function forceRespawn()
+    local character, humanoid = getCharacterAndHumanoid()
+    if character and humanoid then
+        -- Verifica se a vida está em 100%
+        if humanoid.Health == humanoid.MaxHealth then
+            humanoid:TakeDamage(humanoid.Health)  -- Força a morte do personagem
+        end
+    end
+end
+
 -- Cria a interface
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFarmHUD"
@@ -96,14 +107,6 @@ local function teleportTo(position)
         if humanoidRootPart then
             humanoidRootPart.CFrame = CFrame.new(position)
         end
-    end
-end
-
--- Função de respawn - Matar o personagem e forçar o respawn
-local function forceRespawn()
-    local character, humanoid = getCharacterAndHumanoid()
-    if character and humanoid then
-        humanoid:TakeDamage(humanoid.Health)  -- Matar o personagem
     end
 end
 
@@ -197,6 +200,10 @@ player.CharacterAdded:Connect(function()
         teleportTo(targetPosition2)
     end
     if isRespawnLoopActive then
-        forceRespawn()
+        -- Espera até que a vida do personagem esteja em 100% antes de forçar o respawn
+        local character, humanoid = getCharacterAndHumanoid()
+        if humanoid and humanoid.Health == humanoid.MaxHealth then
+            forceRespawn()
+        end
     end
 end)
