@@ -141,7 +141,7 @@ local function toggleRespawnLoop()
         -- Respawn imediato + loop a cada 5s
         forceRespawn()
         respawnLoop = RunService.Heartbeat:Connect(function()
-            wait(5)  -- Alterar para o tempo desejado entre respawns
+            wait(12)  -- Alterar para o tempo desejado entre respawns
             forceRespawn()
         end)
     else
