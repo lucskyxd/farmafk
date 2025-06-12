@@ -15,6 +15,13 @@ local teleportLoop
 local respawnLoop
 local teleportLoop2  -- Loop para o TP2
 
+-- Função para obter o humanoide e o personagem
+local function getCharacterAndHumanoid()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    return character, humanoid
+end
+
 -- Cria a interface
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFarmHUD"
@@ -83,7 +90,7 @@ closeButton.Parent = frame
 
 -- Função de teleporte
 local function teleportTo(position)
-    local character = player.Character
+    local character, humanoid = getCharacterAndHumanoid()
     if character then
         local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
         if humanoidRootPart then
@@ -94,11 +101,8 @@ end
 
 -- Função de respawn - Matar o personagem e forçar o respawn
 local function forceRespawn()
-    local character = player.Character
-    if character and character:FindFirstChild("Humanoid") then
-        local humanoid = character:FindFirstChild("Humanoid")
-        
-        -- Força o "morte" do personagem e a recarga
+    local character, humanoid = getCharacterAndHumanoid()
+    if character and humanoid then
         humanoid:TakeDamage(humanoid.Health)  -- Matar o personagem
     end
 end
@@ -137,7 +141,7 @@ local function toggleRespawnLoop()
         -- Respawn imediato + loop a cada 5s
         forceRespawn()
         respawnLoop = RunService.Heartbeat:Connect(function()
-            wait(12)  -- Alterar para o tempo desejado entre respawns
+            wait(5)  -- Alterar para o tempo desejado entre respawns
             forceRespawn()
         end)
     else
@@ -183,9 +187,16 @@ closeButton.MouseButton1Click:Connect(function()
     if teleportLoop2 then teleportLoop2:Disconnect() end  -- Desconectar o novo loop de TP2
 end)
 
--- Limpeza ao sair
-game:GetService("Players").LocalPlayer.CharacterRemoving:Connect(function()
-    if teleportLoop then teleportLoop:Disconnect() end
-    if respawnLoop then respawnLoop:Disconnect() end
-    if teleportLoop2 then teleportLoop2:Disconnect() end  -- Limpeza do novo loop de TP2
+-- Limpeza ao sair e monitoramento do respawn
+player.CharacterAdded:Connect(function()
+    -- Atualiza o character para o novo, e reinicia os loops se os botões estiverem ativos
+    if isTpLoopActive then
+        teleportTo(targetPosition)
+    end
+    if isTp2LoopActive then
+        teleportTo(targetPosition2)
+    end
+    if isRespawnLoopActive then
+        forceRespawn()
+    end
 end)
