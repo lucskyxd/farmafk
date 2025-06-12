@@ -1,0 +1,207 @@
+--[[
+    Auto Respawn Script para Roblox
+    Features:
+    - HUD dragável personalizável
+    - Botão de ativar/desativar
+    - Botão de fechar
+    - Respawn automático a cada 12 segundos
+    - Compatível com executors
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- Configurações
+local RESPAWN_INTERVAL = 12 -- segundos
+local DEBUG_MODE = false -- ativa logs no console
+
+-- Estado do script
+local AutoRespawn = {
+    Enabled = false,
+    LastRespawnTime = 0,
+    Connections = {},
+    UI = nil
+}
+
+-- Função para debugar
+local function DebugPrint(...)
+    if DEBUG_MODE then
+        print("[AutoRespawn]", ...)
+    end
+end
+
+-- Função para forçar respawn
+function AutoRespawn:ForceRespawn()
+    if not LocalPlayer.Character then return end
+    
+    DebugPrint("Forçando respawn...")
+    LocalPlayer.Character:BreakJoints()
+    self.LastRespawnTime = os.time()
+end
+
+-- Função para alternar o sistema
+function AutoRespawn:Toggle(enable)
+    self.Enabled = enable
+    
+    -- Limpar conexões antigas
+    for _, conn in pairs(self.Connections) do
+        conn:Disconnect()
+    end
+    self.Connections = {}
+    
+    if enable then
+        DebugPrint("Ativando Auto Respawn")
+        
+        -- Forçar primeiro respawn imediatamente
+        self:ForceRespawn()
+        
+        -- Configurar loop de respawn
+        table.insert(self.Connections, RunService.Heartbeat:Connect(function()
+            if os.time() - self.LastRespawnTime >= RESPAWN_INTERVAL then
+                self:ForceRespawn()
+            end
+        end))
+    else
+        DebugPrint("Desativando Auto Respawn")
+    end
+    
+    -- Atualizar UI
+    if self.UI then
+        self.UI.ToggleButton.Text = enable and "DESATIVAR" or "ATIVAR"
+        self.UI.ToggleButton.BackgroundColor3 = enable and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(150, 30, 30)
+    end
+end
+
+-- Função para criar a interface
+function AutoRespawn:CreateUI()
+    if self.UI then self.UI.Main:Destroy() end
+    
+    local Main = Instance.new("ScreenGui")
+    Main.Name = "AutoRespawnHUD"
+    Main.ResetOnSpawn = false
+    Main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Main.IgnoreGuiInset = true
+    
+    local Frame = Instance.new("Frame")
+    Frame.Name = "MainFrame"
+    Frame.Size = UDim2.new(0, 220, 0, 150)
+    Frame.Position = UDim2.new(0.5, -110, 0.5, -75)
+    Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Frame.BorderSizePixel = 0
+    Frame.Active = true
+    Frame.Draggable = true
+    Frame.Parent = Main
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Title.Text = "AUTO RESPAWN v1.0"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 14
+    Title.Parent = Frame
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 8)
+    TitleCorner.Parent = Title
+    
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
+    ToggleButton.Position = UDim2.new(0.1, 0, 0.25, 0)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.Font = Enum.Font.GothamBold
+    ToggleButton.TextSize = 16
+    ToggleButton.Text = "ATIVAR"
+    ToggleButton.Parent = Frame
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 6)
+    ToggleCorner.Parent = ToggleButton
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0.8, 0, 0, 30)
+    CloseButton.Position = UDim2.new(0.1, 0, 0.65, 0)
+    CloseButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = Enum.Font.Gotham
+    CloseButton.TextSize = 14
+    CloseButton.Text = "FECHAR"
+    CloseButton.Parent = Frame
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 6)
+    CloseCorner.Parent = CloseButton
+    
+    -- Animações
+    local function ButtonHoverEffect(button)
+        button.MouseEnter:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0.3}):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+        end)
+    end
+    
+    ButtonHoverEffect(ToggleButton)
+    ButtonHoverEffect(CloseButton)
+    
+    -- Conectar eventos
+    ToggleButton.MouseButton1Click:Connect(function()
+        self:Toggle(not self.Enabled)
+    end)
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        Main:Destroy()
+        self.UI = nil
+    end)
+    
+    -- Salvar referências
+    self.UI = {
+        Main = Main,
+        ToggleButton = ToggleButton,
+        CloseButton = CloseButton
+    }
+    
+    -- Adicionar ao PlayerGui
+    if not LocalPlayer:FindFirstChild("PlayerGui") then
+        LocalPlayer:WaitForChild("PlayerGui")
+    end
+    Main.Parent = LocalPlayer.PlayerGui
+    
+    DebugPrint("Interface criada com sucesso")
+end
+
+-- Inicialização
+local function Initialize()
+    DebugPrint("Inicializando script...")
+    
+    -- Criar interface
+    AutoRespawn:CreateUI()
+    
+    -- Configurar hotkey (opcional - F2 para toggle)
+    table.insert(AutoRespawn.Connections, UserInputService.InputBegan:Connect(function(input, processed)
+        if not processed and input.KeyCode == Enum.KeyCode.F2 then
+            AutoRespawn:Toggle(not AutoRespawn.Enabled)
+        end
+    end))
+    
+    DebugPrint("Script carregado com sucesso!")
+end
+
+-- Iniciar
+pcall(Initialize)
+
+return AutoRespawn
