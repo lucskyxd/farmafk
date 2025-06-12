@@ -1,88 +1,39 @@
--- [OTIMIZADO] Auto-TP + Auto-Respawn para Rock Fruit
+-- Auto-TP + Auto-Respawn para Rock Fruit
 -- Autorizado pelo dono do jogo
 
 local player = game:GetService("Players").LocalPlayer
+local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- ========= CONFIGURAÇÕES =========
-local SETTINGS = {
-    TP_POSITION_1 = Vector3.new(1025.03, 19.54, -2943.95),
-    TP_POSITION_2 = Vector3.new(991.27, 19.54, -2943.93),
-    RESPAWN_INTERVAL = 5, -- segundos
-    TP_INTERVAL = 5, -- segundos
-    UI_POSITION = UDim2.new(0.5, -110, 0.7, -75)
-}
+-- Configurações
+local targetPosition = Vector3.new(1025.03, 19.54, -2943.95)
+local targetPosition2 = Vector3.new(991.27, 19.54, -2943.93)  -- Nova coordenada para o novo TP
+local isTpLoopActive = false
+local isRespawnLoopActive = false
+local isTp2LoopActive = false  -- Nova variável para o TP2
+local teleportLoop
+local respawnLoop
+local teleportLoop2  -- Loop para o TP2
 
--- ========= ESTADOS =========
-local states = {
-    tp1Active = false,
-    tp2Active = false,
-    respawnActive = false
-}
-
-local connections = {
-    tp1 = nil,
-    tp2 = nil,
-    respawn = nil
-}
-
--- ========= FUNÇÕES UTILITÁRIAS =========
-local function getCharacter()
-    return player.Character or player.CharacterAdded:Wait()
+-- Função para obter o humanoide e o personagem
+local function getCharacterAndHumanoid()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    return character, humanoid
 end
 
-local function getHumanoid(character)
-    return character:FindFirstChildOfClass("Humanoid")
-end
-
-local function safeTeleport(position)
-    local character = getCharacter()
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if humanoidRootPart then
-        humanoidRootPart.CFrame = CFrame.new(position)
-        return true
-    end
-    return false
-end
-
-local function forceKill()
-    local character = getCharacter()
-    local humanoid = getHumanoid(character)
-    if humanoid and humanoid.Health > 0 then
-        humanoid.Health = 0
-        return true
-    end
-    return false
-end
-
--- ========= INTERFACE =========
+-- Cria a interface
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "UltimateFarmHUD"
+screenGui.Name = "AutoFarmHUD"
 screenGui.Parent = game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 180)
-frame.Position = SETTINGS.UI_POSITION
+frame.Size = UDim2.new(0, 220, 0, 150)
+frame.Position = UDim2.new(0.5, -110, 0.7, -75)
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.BorderSizePixel = 0
 frame.Parent = screenGui
 
--- Função para criar botões padronizados
-local function createButton(name, yPos)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Text = name..": OFF"
-    button.Size = UDim2.new(0.8, 0, 0, 30)
-    button.Position = UDim2.new(0.1, 0, 0, yPos)
-    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.Font = Enum.Font.Code
-    button.TextSize = 14
-    button.Parent = frame
-    return button
-end
-
--- Título
 local title = Instance.new("TextLabel")
 title.Text = "AUTO-FARM CONTROLS"
 title.Size = UDim2.new(1, 0, 0, 25)
@@ -93,76 +44,159 @@ title.Font = Enum.Font.Code
 title.TextSize = 16
 title.Parent = frame
 
--- Botões
-local tp1Button = createButton("TP1", 30)
-local tp2Button = createButton("TP2", 70)
-local respawnButton = createButton("RESPAWN", 110)
-local closeButton = createButton("FECHAR", 150)
+-- Botão Auto-TP
+local tpToggleButton = Instance.new("TextButton")
+tpToggleButton.Text = "TP: OFF"
+tpToggleButton.Size = UDim2.new(0.8, 0, 0, 30)
+tpToggleButton.Position = UDim2.new(0.1, 0, 0, 30)
+tpToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+tpToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpToggleButton.Font = Enum.Font.Code
+tpToggleButton.TextSize = 14
+tpToggleButton.Parent = frame
+
+-- Botão Auto-Respawn
+local respawnToggleButton = Instance.new("TextButton")
+respawnToggleButton.Text = "RESPAWN: OFF"
+respawnToggleButton.Size = UDim2.new(0.8, 0, 0, 30)
+respawnToggleButton.Position = UDim2.new(0.1, 0, 0, 70)
+respawnToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+respawnToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+respawnToggleButton.Font = Enum.Font.Code
+respawnToggleButton.TextSize = 14
+respawnToggleButton.Parent = frame
+
+-- Novo botão de Auto-TP (para a nova coordenada)
+local tp2ToggleButton = Instance.new("TextButton")
+tp2ToggleButton.Text = "TP2: OFF"
+tp2ToggleButton.Size = UDim2.new(0.8, 0, 0, 30)
+tp2ToggleButton.Position = UDim2.new(0.1, 0, 0, 110)
+tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+tp2ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tp2ToggleButton.Font = Enum.Font.Code
+tp2ToggleButton.TextSize = 14
+tp2ToggleButton.Parent = frame
+
+-- Botão Fechar
+local closeButton = Instance.new("TextButton")
+closeButton.Text = "FECHAR"
+closeButton.Size = UDim2.new(0.8, 0, 0, 25)
+closeButton.Position = UDim2.new(0.1, 0, 0, 150)
 closeButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.Code
+closeButton.TextSize = 14
+closeButton.Parent = frame
 
--- ========= LÓGICA DE CONTROLE =========
-local function toggleLoop(loopType, position)
-    return function()
-        states[loopType] = not states[loopType]
-        local button = loopType == "tp1Active" and tp1Button or 
-                      loopType == "tp2Active" and tp2Button or 
-                      respawnButton
+-- Função de teleporte
+local function teleportTo(position)
+    local character, humanoid = getCharacterAndHumanoid()
+    if character then
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            humanoidRootPart.CFrame = CFrame.new(position)
+        end
+    end
+end
 
-        if states[loopType] then
-            button.Text = button.Name:gsub(": OFF", ": ON")
-            button.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
-            
-            -- Ação imediata
-            if loopType ~= "respawnActive" then
-                safeTeleport(position)
-            else
-                forceKill()
-            end
-            
-            -- Configura o loop
-            connections[loopType:match("(%a+)Active")] = RunService.Heartbeat:Connect(function()
-                wait(loopType == "respawnActive" and SETTINGS.RESPAWN_INTERVAL or SETTINGS.TP_INTERVAL)
-                if loopType ~= "respawnActive" then
-                    safeTeleport(position)
-                else
-                    forceKill()
-                end
-            end)
-        else
-            button.Text = button.Name:gsub(": ON", ": OFF")
-            button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-            if connections[loopType:match("(%a+)Active")] then
-                connections[loopType:match("(%a+)Active")]:Disconnect()
-            end
+-- Função de respawn - Matar o personagem e forçar o respawn
+local function forceRespawn()
+    local character, humanoid = getCharacterAndHumanoid()
+    if character and humanoid then
+        humanoid:TakeDamage(humanoid.Health)  -- Matar o personagem
+    end
+end
+
+-- Controle do Auto-TP
+local function toggleTpLoop()
+    isTpLoopActive = not isTpLoopActive
+
+    if isTpLoopActive then
+        tpToggleButton.Text = "TP: ON"
+        tpToggleButton.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
+        
+        -- Teleporte imediato + loop a cada 5s
+        teleportTo(targetPosition)
+        teleportLoop = RunService.Heartbeat:Connect(function()
+            wait(5)
+            teleportTo(targetPosition)
+        end)
+    else
+        tpToggleButton.Text = "TP: OFF"
+        tpToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if teleportLoop then
+            teleportLoop:Disconnect()
+        end
+    end
+end
+
+-- Controle do Auto-Respawn
+local function toggleRespawnLoop()
+    isRespawnLoopActive = not isRespawnLoopActive
+
+    if isRespawnLoopActive then
+        respawnToggleButton.Text = "RESPAWN: ON"
+        respawnToggleButton.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
+        
+        -- Respawn imediato + loop a cada 12s
+        forceRespawn()
+        respawnLoop = RunService.Heartbeat:Connect(function()
+            wait(12)  -- Respawn a cada 12 segundos
+            forceRespawn()
+        end)
+    else
+        respawnToggleButton.Text = "RESPAWN: OFF"
+        respawnToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if respawnLoop then
+            respawnLoop:Disconnect()
+        end
+    end
+end
+
+-- Controle do Auto-TP2
+local function toggleTp2Loop()
+    isTp2LoopActive = not isTp2LoopActive
+
+    if isTp2LoopActive then
+        tp2ToggleButton.Text = "TP2: ON"
+        tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
+        
+        -- Teleporte imediato + loop a cada 5s
+        teleportTo(targetPosition2)
+        teleportLoop2 = RunService.Heartbeat:Connect(function()
+            wait(5)
+            teleportTo(targetPosition2)
+        end)
+    else
+        tp2ToggleButton.Text = "TP2: OFF"
+        tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if teleportLoop2 then
+            teleportLoop2:Disconnect()
         end
     end
 end
 
 -- Conexões dos botões
-tp1Button.MouseButton1Click:Connect(toggleLoop("tp1Active", SETTINGS.TP_POSITION_1))
-tp2Button.MouseButton1Click:Connect(toggleLoop("tp2Active", SETTINGS.TP_POSITION_2))
-respawnButton.MouseButton1Click:Connect(toggleLoop("respawnActive"))
-
+tpToggleButton.MouseButton1Click:Connect(toggleTpLoop)
+respawnToggleButton.MouseButton1Click:Connect(toggleRespawnLoop)
+tp2ToggleButton.MouseButton1Click:Connect(toggleTp2Loop)  -- Conexão para o novo botão de TP2
 closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
-    for _, connection in pairs(connections) do
-        if connection then connection:Disconnect() end
-    end
+    if teleportLoop then teleportLoop:Disconnect() end
+    if respawnLoop then respawnLoop:Disconnect() end
+    if teleportLoop2 then teleportLoop2:Disconnect() end  -- Desconectar o novo loop de TP2
 end)
 
--- Reinicia os loops quando o personagem respawna
+-- Limpeza ao sair e monitoramento do respawn
 player.CharacterAdded:Connect(function()
-    wait(1) -- Espera o personagem carregar completamente
-    
-    if states.tp1Active then
-        safeTeleport(SETTINGS.TP_POSITION_1)
+    -- Atualiza o character para o novo, e reinicia os loops se os botões estiverem ativos
+    if isTpLoopActive then
+        teleportTo(targetPosition)
     end
-    
-    if states.tp2Active then
-        safeTeleport(SETTINGS.TP_POSITION_2)
+    if isTp2LoopActive then
+        teleportTo(targetPosition2)
     end
-    
-    if states.respawnActive then
-        forceKill()
+    if isRespawnLoopActive then
+        forceRespawn()
     end
 end)
