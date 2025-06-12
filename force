@@ -1,0 +1,349 @@
+--[[
+    Script para forçar o RemoteEvent "Restock Arena"
+    Compatível com executors (Synapse, Krnl, Fluxus, etc.)
+    Features:
+    - Interface HUD personalizável
+    - Botão de ativar/desativar
+    - Frequência ajustável
+    - Botão de fechar
+    - Drag and drop
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- Configurações
+local EVENT_NAME = "Restock Arena" -- Nome do RemoteEvent que será acionado
+local DEFAULT_INTERVAL = 5 -- segundos (intervalo padrão)
+local DEBUG_MODE = true -- ativa logs no console
+
+-- Estado do script
+local RestockForcer = {
+    Enabled = false,
+    LastEventTime = 0,
+    Interval = DEFAULT_INTERVAL,
+    Connections = {},
+    UI = nil,
+    RemoteEvent = nil
+}
+
+-- Função para debugar
+local function DebugPrint(...)
+    if DEBUG_MODE then
+        print("[RestockForcer]", ...)
+    end
+end
+
+-- Função para encontrar o RemoteEvent
+function RestockForcer:FindRemoteEvent()
+    -- Procurar em ReplicatedFirst (comum em alguns jogos)
+    local repFirst = game:GetService("ReplicatedFirst")
+    local found = repFirst:FindFirstChild(EVENT_NAME)
+    if found and found:IsA("RemoteEvent") then
+        return found
+    end
+
+    -- Procurar em ReplicatedStorage
+    local repStorage = game:GetService("ReplicatedStorage")
+    found = repStorage:FindFirstChild(EVENT_NAME)
+    if found and found:IsA("RemoteEvent") then
+        return found
+    end
+
+    -- Procurar em Workspace
+    local workspace = game:GetService("Workspace")
+    found = workspace:FindFirstChild(EVENT_NAME)
+    if found and found:IsA("RemoteEvent") then
+        return found
+    end
+
+    -- Procurar em outros serviços
+    local services = {
+        game:GetService("ServerScriptService"),
+        game:GetService("ServerStorage"),
+        game:GetService("StarterGui"),
+        game:GetService("StarterPack"),
+        game:GetService("StarterPlayer")
+    }
+
+    for _, service in ipairs(services) do
+        found = service:FindFirstChild(EVENT_NAME)
+        if found and found:IsA("RemoteEvent") then
+            return found
+        end
+    end
+
+    return nil
+end
+
+-- Função para disparar o evento
+function RestockForcer:FireEvent()
+    if not self.RemoteEvent then
+        self.RemoteEvent = self:FindRemoteEvent()
+        if not self.RemoteEvent then
+            DebugPrint("ERRO: RemoteEvent não encontrado!")
+            if self.UI then
+                self.UI.StatusLabel.Text = "ERRO: Evento não encontrado"
+                self.UI.StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            end
+            return false
+        end
+    end
+
+    DebugPrint("Disparando evento...")
+    
+    -- Tenta disparar com diferentes parâmetros (caso o jogo espere algum específico)
+    local success, err = pcall(function()
+        self.RemoteEvent:FireServer("Restock") -- Tentativa 1
+        wait(0.1)
+        self.RemoteEvent:FireServer(true)      -- Tentativa 2
+        wait(0.1)
+        self.RemoteEvent:FireServer()          -- Tentativa 3 (sem args)
+    end)
+
+    if success then
+        self.LastEventTime = os.time()
+        if self.UI then
+            self.UI.StatusLabel.Text = "Último disparo: " .. os.date("%X")
+            self.UI.StatusLabel.TextColor3 = Color3.fromRGB(50, 255, 50)
+        end
+        return true
+    else
+        DebugPrint("Falha ao disparar:", err)
+        if self.UI then
+            self.UI.StatusLabel.Text = "ERRO: Falha ao disparar"
+            self.UI.StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        end
+        return false
+    end
+end
+
+-- Função para alternar o sistema
+function RestockForcer:Toggle(enable)
+    self.Enabled = enable
+    
+    -- Limpar conexões antigas
+    for _, conn in pairs(self.Connections) do
+        conn:Disconnect()
+    end
+    self.Connections = {}
+    
+    if enable then
+        DebugPrint("Ativando disparo automático")
+        
+        -- Disparar primeiro evento imediatamente
+        self:FireEvent()
+        
+        -- Configurar loop de disparos
+        table.insert(self.Connections, RunService.Heartbeat:Connect(function()
+            if os.time() - self.LastEventTime >= self.Interval then
+                self:FireEvent()
+            end
+        end))
+    else
+        DebugPrint("Desativando disparo automático")
+    end
+    
+    -- Atualizar UI
+    if self.UI then
+        self.UI.ToggleButton.Text = enable and "DESATIVAR" or "ATIVAR"
+        self.UI.ToggleButton.BackgroundColor3 = enable and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(150, 30, 30)
+        self.UI.IntervalBox.Visible = not enable
+    end
+end
+
+-- Função para criar a interface
+function RestockForcer:CreateUI()
+    if self.UI then self.UI.Main:Destroy() end
+    
+    local Main = Instance.new("ScreenGui")
+    Main.Name = "RestockForcerHUD"
+    Main.ResetOnSpawn = false
+    Main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Main.IgnoreGuiInset = true
+    
+    local Frame = Instance.new("Frame")
+    Frame.Name = "MainFrame"
+    Frame.Size = UDim2.new(0, 250, 0, 180)
+    Frame.Position = UDim2.new(0.5, -125, 0.5, -90)
+    Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Frame.BorderSizePixel = 0
+    Frame.Active = true
+    Frame.Draggable = true
+    Frame.Parent = Main
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Title.Text = "RESTOCK FORCER v1.0"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 14
+    Title.Parent = Frame
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 8)
+    TitleCorner.Parent = Title
+    
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Size = UDim2.new(0.9, 0, 0, 20)
+    StatusLabel.Position = UDim2.new(0.05, 0, 0.2, 0)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "Pronto para disparar"
+    StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    StatusLabel.Font = Enum.Font.Gotham
+    StatusLabel.TextSize = 12
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatusLabel.Parent = Frame
+    
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
+    ToggleButton.Position = UDim2.new(0.1, 0, 0.35, 0)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.Font = Enum.Font.GothamBold
+    ToggleButton.TextSize = 16
+    ToggleButton.Text = "ATIVAR"
+    ToggleButton.Parent = Frame
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 6)
+    ToggleCorner.Parent = ToggleButton
+    
+    local IntervalBox = Instance.new("TextBox")
+    IntervalBox.Name = "IntervalBox"
+    IntervalBox.Size = UDim2.new(0.4, 0, 0, 25)
+    IntervalBox.Position = UDim2.new(0.3, 0, 0.35, 0)
+    IntervalBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    IntervalBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    IntervalBox.Font = Enum.Font.Gotham
+    IntervalBox.TextSize = 14
+    IntervalBox.Text = tostring(DEFAULT_INTERVAL)
+    IntervalBox.PlaceholderText = "Intervalo (seg)"
+    IntervalBox.Parent = Frame
+    
+    local IntervalCorner = Instance.new("UICorner")
+    IntervalCorner.CornerRadius = UDim.new(0, 4)
+    IntervalCorner.Parent = IntervalBox
+    
+    local ManualButton = Instance.new("TextButton")
+    ManualButton.Name = "ManualButton"
+    ManualButton.Size = UDim2.new(0.8, 0, 0, 30)
+    ManualButton.Position = UDim2.new(0.1, 0, 0.6, 0)
+    ManualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 150)
+    ManualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ManualButton.Font = Enum.Font.Gotham
+    ManualButton.TextSize = 14
+    ManualButton.Text = "DISPARAR AGORA"
+    ManualButton.Parent = Frame
+    
+    local ManualCorner = Instance.new("UICorner")
+    ManualCorner.CornerRadius = UDim.new(0, 6)
+    ManualCorner.Parent = ManualButton
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0.8, 0, 0, 25)
+    CloseButton.Position = UDim2.new(0.1, 0, 0.8, 0)
+    CloseButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.Font = Enum.Font.Gotham
+    CloseButton.TextSize = 14
+    CloseButton.Text = "FECHAR"
+    CloseButton.Parent = Frame
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 6)
+    CloseCorner.Parent = CloseButton
+    
+    -- Animações
+    local function ButtonHoverEffect(button)
+        button.MouseEnter:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0.3}):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+        end)
+    end
+    
+    ButtonHoverEffect(ToggleButton)
+    ButtonHoverEffect(ManualButton)
+    ButtonHoverEffect(CloseButton)
+    
+    -- Conectar eventos
+    ToggleButton.MouseButton1Click:Connect(function()
+        self:Toggle(not self.Enabled)
+    end)
+    
+    ManualButton.MouseButton1Click:Connect(function()
+        self:FireEvent()
+    end)
+    
+    IntervalBox.FocusLost:Connect(function(enterPressed)
+        local newInterval = tonumber(IntervalBox.Text)
+        if newInterval and newInterval > 0 then
+            self.Interval = newInterval
+            IntervalBox.Text = tostring(newInterval)
+            DebugPrint("Intervalo alterado para", newInterval, "segundos")
+        else
+            IntervalBox.Text = tostring(self.Interval)
+        end
+    end)
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        Main:Destroy()
+        self.UI = nil
+    end)
+    
+    -- Salvar referências
+    self.UI = {
+        Main = Main,
+        ToggleButton = ToggleButton,
+        ManualButton = ManualButton,
+        CloseButton = CloseButton,
+        IntervalBox = IntervalBox,
+        StatusLabel = StatusLabel
+    }
+    
+    -- Adicionar ao PlayerGui
+    if not LocalPlayer:FindFirstChild("PlayerGui") then
+        LocalPlayer:WaitForChild("PlayerGui")
+    end
+    Main.Parent = LocalPlayer.PlayerGui
+    
+    DebugPrint("Interface criada com sucesso")
+end
+
+-- Inicialização
+local function Initialize()
+    DebugPrint("Inicializando script...")
+    
+    -- Criar interface
+    RestockForcer:CreateUI()
+    
+    -- Configurar hotkey (F3 para toggle)
+    table.insert(RestockForcer.Connections, UserInputService.InputBegan:Connect(function(input, processed)
+        if not processed and input.KeyCode == Enum.KeyCode.F3 then
+            RestockForcer:Toggle(not RestockForcer.Enabled)
+        end
+    end))
+    
+    DebugPrint("Script carregado com sucesso!")
+end
+
+-- Iniciar
+pcall(Initialize)
+
+return RestockForcer
