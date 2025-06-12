@@ -1,0 +1,161 @@
+-- Script de Teleporte (TP1 e TP2)
+
+local player = game:GetService("Players").LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+-- Configurações de coordenadas
+local targetPosition = Vector3.new(1025.03, 19.54, -2943.95)
+local targetPosition2 = Vector3.new(991.27, 19.54, -2943.93)
+
+local isTpLoopActive = false
+local isTp2LoopActive = false
+local teleportLoop
+local teleportLoop2
+
+-- Função de teleporte
+local function teleportTo(position)
+    local character = player.Character
+    if character then
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            humanoidRootPart.CFrame = CFrame.new(position)
+        end
+    end
+end
+
+-- Cria a interface
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoFarmTP"
+screenGui.Parent = game:GetService("CoreGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 220, 0, 150)
+frame.Position = UDim2.new(0.5, -110, 0.7, -75)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+-- Torna a frame "draggable"
+local dragToggle = false
+local dragStart = Vector2.new()
+local startPos = Vector2.new()
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
+end)
+
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragToggle then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local title = Instance.new("TextLabel")
+title.Text = "AUTO-TP CONTROLS"
+title.Size = UDim2.new(1, 0, 0, 25)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.Code
+title.TextSize = 16
+title.Parent = frame
+
+-- Botão Auto-TP1
+local tpToggleButton = Instance.new("TextButton")
+tpToggleButton.Text = "TP1: OFF"
+tpToggleButton.Size = UDim2.new(0.8, 0, 0, 30)
+tpToggleButton.Position = UDim2.new(0.1, 0, 0, 30)
+tpToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+tpToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpToggleButton.Font = Enum.Font.Code
+tpToggleButton.TextSize = 14
+tpToggleButton.Parent = frame
+
+-- Botão Auto-TP2
+local tp2ToggleButton = Instance.new("TextButton")
+tp2ToggleButton.Text = "TP2: OFF"
+tp2ToggleButton.Size = UDim2.new(0.8, 0, 0, 30)
+tp2ToggleButton.Position = UDim2.new(0.1, 0, 0, 70)
+tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+tp2ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tp2ToggleButton.Font = Enum.Font.Code
+tp2ToggleButton.TextSize = 14
+tp2ToggleButton.Parent = frame
+
+-- Botão Fechar
+local closeButton = Instance.new("TextButton")
+closeButton.Text = "FECHAR"
+closeButton.Size = UDim2.new(0.8, 0, 0, 25)
+closeButton.Position = UDim2.new(0.1, 0, 0, 110)
+closeButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.Code
+closeButton.TextSize = 14
+closeButton.Parent = frame
+
+-- Função de controle do TP1
+local function toggleTpLoop()
+    isTpLoopActive = not isTpLoopActive
+
+    if isTpLoopActive then
+        tpToggleButton.Text = "TP1: ON"
+        tpToggleButton.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
+        
+        -- Teleporte imediato + loop a cada 5s
+        teleportTo(targetPosition)
+        teleportLoop = RunService.Heartbeat:Connect(function()
+            wait(5)
+            teleportTo(targetPosition)
+        end)
+    else
+        tpToggleButton.Text = "TP1: OFF"
+        tpToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if teleportLoop then
+            teleportLoop:Disconnect()
+        end
+    end
+end
+
+-- Função de controle do TP2
+local function toggleTp2Loop()
+    isTp2LoopActive = not isTp2LoopActive
+
+    if isTp2LoopActive then
+        tp2ToggleButton.Text = "TP2: ON"
+        tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 100, 30)
+        
+        -- Teleporte imediato + loop a cada 5s
+        teleportTo(targetPosition2)
+        teleportLoop2 = RunService.Heartbeat:Connect(function()
+            wait(5)
+            teleportTo(targetPosition2)
+        end)
+    else
+        tp2ToggleButton.Text = "TP2: OFF"
+        tp2ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if teleportLoop2 then
+            teleportLoop2:Disconnect()
+        end
+    end
+end
+
+-- Conexões dos botões
+tpToggleButton.MouseButton1Click:Connect(toggleTpLoop)
+tp2ToggleButton.MouseButton1Click:Connect(toggleTp2Loop)
+closeButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    if teleportLoop then teleportLoop:Disconnect() end
+    if teleportLoop2 then teleportLoop2:Disconnect() end
+end)
