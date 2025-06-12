@@ -1,0 +1,132 @@
+-- Script de Server Hop e Teleporte
+local player = game:GetService("Players").LocalPlayer
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+
+-- Configurações
+local TP_POSITION = Vector3.new(1025.03, 19.54, -2943.95)
+local GAME_ID = game.PlaceId -- Pega automaticamente o ID do jogo atual
+
+-- Cria a interface
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ServerHopHUD"
+screenGui.Parent = game:GetService("CoreGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 120)
+frame.Position = UDim2.new(0.5, -100, 0.5, -60)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local title = Instance.new("TextLabel")
+title.Text = "SERVER HOP HUD"
+title.Size = UDim2.new(1, 0, 0, 25)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.Code
+title.TextSize = 16
+title.Parent = frame
+
+-- Função para criar botões
+local function createButton(text, yPos, color)
+    local button = Instance.new("TextButton")
+    button.Text = text
+    button.Size = UDim2.new(0.8, 0, 0, 30)
+    button.Position = UDim2.new(0.1, 0, 0, yPos)
+    button.BackgroundColor3 = color or Color3.fromRGB(60, 60, 60)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.Code
+    button.TextSize = 14
+    button.Parent = frame
+    return button
+end
+
+-- Botão de Server Hop
+local serverHopButton = createButton("SERVER HOP", 30, Color3.fromRGB(80, 80, 120))
+
+-- Botão de Teleporte
+local teleportButton = createButton("TELEPORT", 70, Color3.fromRGB(80, 120, 80))
+
+-- Botão Fechar
+local closeButton = createButton("FECHAR", 110, Color3.fromRGB(120, 60, 60))
+
+-- Função de Teleporte
+local function teleportTo(position)
+    local character = player.Character
+    if character then
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            humanoidRootPart.CFrame = CFrame.new(position)
+        end
+    end
+end
+
+-- Função de Server Hop
+local function serverHop()
+    -- Desativa os botões durante o processo
+    serverHopButton.Text = "PROCURANDO SERVIDOR..."
+    serverHopButton.Active = false
+    teleportButton.Active = false
+    
+    -- Obtém a lista de servidores
+    local servers = {}
+    local success, message = pcall(function()
+        servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..GAME_ID.."/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    
+    if success and servers.data then
+        for _, server in ipairs(servers.data) do
+            -- Encontra um servidor diferente do atual
+            if server.playing < server.maxPlayers and tostring(server.id) ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(GAME_ID, server.id, player)
+                return
+            end
+        end
+    end
+    
+    -- Se não encontrar servidor, tenta um novo
+    TeleportService:Teleport(GAME_ID)
+end
+
+-- Conexões dos botões
+serverHopButton.MouseButton1Click:Connect(serverHop)
+teleportButton.MouseButton1Click:Connect(function()
+    teleportTo(TP_POSITION)
+    print("Teleportado para as coordenadas!")
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Permite arrastar a janela
+local dragging, dragInput, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
