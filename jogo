@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo dos Corações</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            background-color: #ffebee;
+            margin: 0;
+            padding: 20px;
+            color: #d81b60;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #game-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        h1 {
+            color: #c2185b;
+        }
+        #game-screen {
+            height: 300px;
+            position: relative;
+            margin: 20px 0;
+            border: 2px dashed #f8bbd0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .heart {
+            position: absolute;
+            font-size: 30px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .heart:hover, .heart:active {
+            transform: scale(1.2);
+        }
+        #score {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        #controls {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #e91e63;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #c2185b;
+        }
+        button:disabled {
+            background-color: #f8bbd0;
+            cursor: not-allowed;
+        }
+        #challenge-screen, #coupon-screen {
+            display: none;
+            padding: 20px;
+        }
+        #coupon {
+            background-color: #fce4ec;
+            border: 2px dashed #e91e63;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 300px;
+            position: relative;
+        }
+        #coupon h2 {
+            color: #c2185b;
+            margin-top: 0;
+        }
+        #coupon-text {
+            font-size: 18px;
+            margin: 15px 0;
+        }
+        #coupon-footer {
+            font-style: italic;
+            font-size: 14px;
+        }
+        @media (max-width: 500px) {
+            #game-screen {
+                height: 200px;
+            }
+            .heart {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Jogo dos Corações</h1>
+        
+        <div id="start-screen">
+            <p>Colete 10 corações para ganhar um prêmio especial!</p>
+            <div id="controls">
+                <button id="start-btn">Começar</button>
+            </div>
+        </div>
+        
+        <div id="game-screen" style="display: none;">
+            <div id="score">Corações: <span id="score-value">0</span>/10</div>
+            <div id="hearts-container"></div>
+        </div>
+        
+        <div id="challenge-screen">
+            <h2>Desafio!</h2>
+            <p id="challenge-text"></p>
+            <div id="controls">
+                <button id="complete-challenge-btn">Completei o desafio!</button>
+            </div>
+        </div>
+        
+        <div id="coupon-screen">
+            <div id="coupon">
+                <h2>Vale Presente</h2>
+                <div id="coupon-text">Vale 1 SIM<br>(seja sensata)</div>
+                <div id="coupon-footer">Tire um print desta tela e guarde!</div>
+            </div>
+            <div id="controls">
+                <button id="restart-btn">Jogar Novamente</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Elementos do jogo
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const challengeScreen = document.getElementById('challenge-screen');
+        const couponScreen = document.getElementById('coupon-screen');
+        const heartsContainer = document.getElementById('hearts-container');
+        const scoreValue = document.getElementById('score-value');
+        const challengeText = document.getElementById('challenge-text');
+        const startBtn = document.getElementById('start-btn');
+        const completeChallengeBtn = document.getElementById('complete-challenge-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        // Variáveis do jogo
+        let score = 0;
+        let hearts = [];
+        const challenges = [
+            "Mande uma mensagem dizendo 'Te amo'",
+            "Faça um elogio sincero",
+            "Lembre de um momento especial que vocês viveram juntos",
+            "Imagine algo que você gostaria de fazer juntos",
+            "Pense em uma qualidade que você admira"
+        ];
+        
+        // Event listeners
+        startBtn.addEventListener('click', startGame);
+        completeChallengeBtn.addEventListener('click', completeChallenge);
+        restartBtn.addEventListener('click', restartGame);
+        
+        // Funções do jogo
+        function startGame() {
+            score = 0;
+            scoreValue.textContent = score;
+            startScreen.style.display = 'none';
+            gameScreen.style.display = 'block';
+            generateHearts();
+        }
+        
+        function generateHearts() {
+            heartsContainer.innerHTML = '';
+            hearts = [];
+            
+            const gameWidth = gameScreen.clientWidth;
+            const gameHeight = gameScreen.clientHeight;
+            
+            for (let i = 0; i < 3; i++) {
+                createHeart(gameWidth, gameHeight);
+            }
+        }
+        
+        function createHeart(maxX, maxY) {
+            const heart = document.createElement('div');
+            heart.className = 'heart';
+            heart.innerHTML = '❤️';
+            
+            const size = 30 + Math.random() * 20;
+            const x = Math.random() * (maxX - size);
+            const y = Math.random() * (maxY - size);
+            
+            heart.style.left = `${x}px`;
+            heart.style.top = `${y}px`;
+            heart.style.fontSize = `${size}px`;
+            
+            heart.addEventListener('click', collectHeart);
+            heart.addEventListener('touchstart', collectHeart);
+            
+            heartsContainer.appendChild(heart);
+            hearts.push(heart);
+        }
+        
+        function collectHeart(e) {
+            e.preventDefault(); // Prevenir comportamento padrão no mobile
+            this.removeEventListener('click', collectHeart);
+            this.removeEventListener('touchstart', collectHeart);
+            
+            this.style.transform = 'scale(1.5)';
+            this.style.opacity = '0';
+            
+            setTimeout(() => {
+                this.remove();
+                hearts = hearts.filter(h => h !== this);
+                
+                score++;
+                scoreValue.textContent = score;
+                
+                if (hearts.length < 3) {
+                    createHeart(gameScreen.clientWidth, gameScreen.clientHeight);
+                }
+                
+                if (score >= 10) {
+                    showChallenge();
+                }
+            }, 200);
+        }
+        
+        function showChallenge() {
+            gameScreen.style.display = 'none';
+            challengeScreen.style.display = 'block';
+            
+            const randomChallenge = challenges[Math.floor(Math.random() * challenges.length)];
+            challengeText.textContent = randomChallenge;
+        }
+        
+        function completeChallenge() {
+            challengeScreen.style.display = 'none';
+            showCoupon();
+        }
+        
+        function showCoupon() {
+            couponScreen.style.display = 'block';
+        }
+        
+        function restartGame() {
+            couponScreen.style.display = 'none';
+            startScreen.style.display = 'block';
+        }
+        
+        // Suporte para eventos de toque
+        document.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
